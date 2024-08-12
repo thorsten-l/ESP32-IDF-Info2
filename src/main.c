@@ -20,8 +20,18 @@
 
 #include <config.h>
 
+#ifdef NEOPIXEL_PIN
+#define NUMPIXELS 1
+#endif
+
 static const char *TAG = "app";
 SemaphoreHandle_t mutex;
+static bool setup_finished;
+
+void delay(uint32_t ms)
+{
+  vTaskDelay(ms / portTICK_PERIOD_MS);
+}
 
 static void setup_sntp(void)
 {
@@ -48,7 +58,7 @@ static void setup_sntp(void)
     {
       break;
     }
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    delay(1000);
   }
 
   now = time(NULL);
@@ -67,9 +77,11 @@ static void setup_sntp(void)
 
   localtime_r(&now, &appTimeinfo);
   printf("time                       : %d-%02d-%02d %02d:%02d:%02d\n", appTimeinfo.tm_year + 1900, appTimeinfo.tm_mon + 1, appTimeinfo.tm_mday, appTimeinfo.tm_hour, appTimeinfo.tm_min, appTimeinfo.tm_sec);
-  printf("timezone                   : %s\n", getenv("TZ"));
+  printf("timezone                   : %s\n\n", getenv("TZ"));
 
   //-------------------------------------------------------------
+
+  setup_finished = true;
 }
 
 static void event_handler(void *arg, esp_event_base_t event_base,
@@ -160,14 +172,36 @@ void secondTask(void *parameter)
   vTaskDelete(NULL);
 }
 
+void loop(void *parameter)
+{
+  struct tm appTimeinfo;
+  time_t now;
+  puts("*** loop started ***");
+
+  while (true)
+  {
+    delay(1000);
+
+    if (setup_finished)
+    {
+      now = time(NULL);
+      localtime_r(&now, &appTimeinfo);
+      printf("\r> %d-%02d-%02d %02d:%02d:%02d", appTimeinfo.tm_year + 1900, appTimeinfo.tm_mon + 1, appTimeinfo.tm_mday, appTimeinfo.tm_hour, appTimeinfo.tm_min, appTimeinfo.tm_sec);
+      fflush(stdout);        // flush the stdout buffer
+      fsync(fileno(stdout)); // flush UART buffer
+    }
+  }
+}
+
 void app_main()
 {
   nvs_flash_init();
   mutex = xSemaphoreCreateMutex();
+  setup_finished = false;
 
   const esp_app_desc_t *app_desc = esp_app_get_description();
 
-  vTaskDelay(3000 / portTICK_PERIOD_MS); // wait for serial monitor
+  delay(3000); // wait for serial monitor
 
   printf("\n\nESP32 Chip Info - IDF - %s by Dr. Thorsten Ludewig\n", app_desc->version);
   puts("Build date: " __DATE__ " " __TIME__ "\n");
@@ -212,15 +246,16 @@ void app_main()
     xTaskCreatePinnedToCore(&secondTask, "secondTask", 2048, NULL, 1, NULL, 0);
   }
 
-  vTaskDelay(50 / portTICK_PERIOD_MS);
+  delay(50);
   xSemaphoreTake(mutex, portMAX_DELAY);
   // -------------------------------------------------------------
   puts("");
   xSemaphoreGive(mutex);
-  vTaskDelay(3000 / portTICK_PERIOD_MS);
+  delay(1000);
 
   wifi_init_sta();
 
+  xTaskCreatePinnedToCore(&loop, "loop", 2048, NULL, 1, NULL, 0);
+
   ESP_LOGI(TAG, "*** APP_MAIN finished ***");
-  fflush(stdout);
 }
