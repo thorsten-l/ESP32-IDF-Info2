@@ -19,14 +19,12 @@
 #include <esp_sntp.h>
 
 #include <config.h>
-
-#ifdef NEOPIXEL_PIN
-#define NUMPIXELS 1
-#endif
+#include "board_led.h"
 
 static const char *TAG = "app";
 SemaphoreHandle_t mutex;
 static bool setup_finished;
+static uint32_t counter = 0;
 
 void delay(uint32_t ms)
 {
@@ -94,7 +92,8 @@ static void event_handler(void *arg, esp_event_base_t event_base,
   else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
   {
     esp_wifi_connect();
-    puts("\n--- retry to connect to the AP");
+    puts("\n--- retry to connect to the AP with SSID: " 
+         WIFI_SSID " ---");
   }
   else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
   {
@@ -184,21 +183,26 @@ void loop(void *parameter)
 
     if (setup_finished)
     {
+      counter++;
       now = time(NULL);
       localtime_r(&now, &appTimeinfo);
       printf("\r> %d-%02d-%02d %02d:%02d:%02d", appTimeinfo.tm_year + 1900, appTimeinfo.tm_mon + 1, appTimeinfo.tm_mday, appTimeinfo.tm_hour, appTimeinfo.tm_min, appTimeinfo.tm_sec);
       fflush(stdout);        // flush the stdout buffer
       fsync(fileno(stdout)); // flush UART buffer
+      NEOPIXEL_SET(0, 96 * (1 - (counter % 2)), 128 * (counter % 2));
+      NEOPIXEL_REFRESH();
+      BOARD_LED_SET(counter % 2);
     }
   }
 }
 
 void app_main()
 {
+  BOARD_LED_INIT();
+  NEOPIXEL_INIT();
   nvs_flash_init();
   mutex = xSemaphoreCreateMutex();
   setup_finished = false;
-
   const esp_app_desc_t *app_desc = esp_app_get_description();
 
   delay(3000); // wait for serial monitor
