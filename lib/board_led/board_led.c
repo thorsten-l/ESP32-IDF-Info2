@@ -20,7 +20,6 @@ void neopixel_refresh(void)
 
 void neopixel_init(void)
 {
-  puts("neopixel_init");
   rmt_config_t config = RMT_DEFAULT_CONFIG_TX(NEOPIXEL_PIN, RMT_CHANNEL);
   config.clk_div = 2; // Set clock divider, adjust as needed
   ESP_ERROR_CHECK(rmt_config(&config));
